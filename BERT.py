@@ -31,11 +31,11 @@ class BertClassification(object):
         train_sampler = RandomSampler(train_data)
         self.train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=self._batch_size)
 
-    def train(self, train_data):
+    def train(self, train_data, epochs):
         self._prepare_data(train_data)
         # Train the model
         self.model.train()
-        for epoch in range(3):
+        for epoch in range(epochs):
             for batch in self.train_dataloader:
                 input_ids = batch['input_ids']
                 attention_mask = batch['attention_mask']

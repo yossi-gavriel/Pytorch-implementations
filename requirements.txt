@@ -1,0 +1,5 @@
+facenet_pytorch
+flask
+torch
+torchvision
+Pillow

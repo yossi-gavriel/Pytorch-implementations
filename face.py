@@ -14,11 +14,30 @@ resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 
 print(f"Using device: {device}")
 
-# Define the transformation pipeline
+target_size = 800
+
+# Define the transformation pipeline for face images
 transform = transforms.Compose([
     transforms.Resize((160, 160)),  # Resize the image to fit the model input
     transforms.ToTensor()
 ])
+
+def process_in_batches(detected_boxes, image_resized):
+    # Adjust the batch size based on your GPU capacity and model requirements
+    batch_size = 32
+    for i in range(0, len(detected_boxes), batch_size):
+        batch_boxes = detected_boxes[i:i + batch_size]
+        faces_tensors = [transform(image_resized.crop((int(box[0]), int(box[1]), int(box[2]), int(box[3])))) for box in batch_boxes]
+        faces_tensor_batch = torch.stack(faces_tensors).to(device)
+        yield faces_tensor_batch
+
+def optimized_face_processing(image_resized, detected_boxes):
+    face_encodings = []
+    for faces_tensor_batch in process_in_batches(detected_boxes, image_resized):
+        # Perform batch face encoding
+        batch_encodings = resnet(faces_tensor_batch).detach().cpu().numpy()
+        face_encodings.extend(batch_encodings.tolist())
+    return face_encodings
 
 @app.route('/detect', methods=['POST'])
 def detect_faces():
@@ -32,8 +51,8 @@ def detect_faces():
     # Process each file
     for file in request.files.getlist('images'):
         image = Image.open(file.stream).convert('RGB')
-        # Resize and detect faces
-        image_resized = image.resize((160, 160))  # Resize image to a standard size
+        aspect_ratio = image.width / image.height
+        image_resized = image.resize((target_size, int(target_size / aspect_ratio)))
         boxes, _ = mtcnn.detect(image_resized)
 
         if boxes is not None:
@@ -51,19 +70,6 @@ def detect_faces():
         'results': results,
         'processing_time_seconds': processing_time
     })
-
-def optimized_face_processing(image_resized, detected_boxes):
-    # Crop detected faces and prepare tensors
-    detected_faces_tensors = [transform(image_resized.crop((int(box[0]), int(box[1]), int(box[2]), int(box[3])))) for box in detected_boxes]
-
-    # Stack tensors to create a batch
-    faces_tensor_batch = torch.stack(detected_faces_tensors).to(device)
-
-    # Perform batch face encoding
-    face_encodings_batch = resnet(faces_tensor_batch).detach().cpu().numpy()
-
-    # Convert batch encodings to list for storage or further processing
-    return face_encodings_batch.tolist()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
